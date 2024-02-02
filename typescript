@@ -1,0 +1,458 @@
+Script started on Wed 15 Mar 2023 10:33:14 PM EDT
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[?1034h[rivers_as@cobra Prog2]$ jtar.cpp
+bash: ./jtar.cpp: Permission denied
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ cat jtar.cpp
+#include <fstream>
+#include <iostream>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <utime.h>
+#include "file.cpp"
+#include <string>
+#include <sstream>
+#include <cstring>
+#include <vector>
+using namespace std;
+
+int checkParams(int argc, char* argv[]);
+void cf(int argc, char* argv[]);
+void listAll(string s);
+File makeFile(string name);
+void listAll(string s, vector <string> &filenames);
+void tf(char* argv[]);
+void xf(char * argv[]);
+
+int main(int argc, char * argv[])
+{
+    checkParams(argc, argv);
+    return 0;
+}
+
+// a method to parse command line args and check for errors
+//if failed, return 0.
+int checkParams(int argc, char* argv[]){
+
+    // no option specified, throw error
+    if(argc < 2){
+        cout << "jtar: You must specify one of the options. " << endl << "Try 'jtar --help' for more information." << endl;
+        return 0;
+    }
+    else if(argv[1][0] != '-'){     //not a valid tar command
+        cout << "You must specify one of the options" << endl << "Try 'jtar --help' for more information." << endl;
+        return 0;
+    }
+    else if(string(argv[1]) == "--help"){   // describe the program options
+        cout << "'jtar' saves many files together into a single tape or disk archive, and " << endl;
+        cout << "can restore individual files from the archive. \n" << endl;
+        cout << "Usage: jtar [OPTION]... [FILE]... \n" << endl;
+        cout << "Option Examples:" << endl;
+        cout << "  tar -cf archive.tar foo bar  # Create archive.tar from files foo and bar." << endl;
+        cout << "  tar -tf archive.tar          # List all files in archive.tar verbosely. " << endl;
+        cout << "  tar -xf archive.tar          # Extract all files from archive.tar." << endl;
+    }
+    else if(string (argv[1]) == "-cf"){     // not enough params for cf
+        if(argc < 4){
+            cout << "jtar: Invalid format" << endl << "Try 'jtar --help' for more information." << endl;
+            return 0;
+        }
+        else
+            cf(argc, argv);                 // call cf to build tar file
+            return 1;
+    }
+    else if(string (argv[1]) == "-tf"){    // not enough params for tf    
+        if(argc < 3){
+            cout << "jtar: Invalid format " << endl << "Try 'jtar --help' for more information." << endl;
+            return 0;   
+        }
+        else
+            tf(argv);                       // call tf to list files
+            return 1;
+    }
+    else if(string (argv[1]) == "-xf"){     // not enough params for xf
+        if(argc < 3){
+            cout << "jtar: Invalid format " << endl << "Try 'jtar --help' for more information." << endl;
+            return 0;   
+        }
+        else
+            xf(argv);                       // call xf to extract files
+            return 1;
+    }
+    else {                                  // any unrecognizable command
+        cout << "jtar: Invalid option (" << argv[1] << ") " << endl << "Try 'jtar --help' for more information." << endl;
+        return 0;
+    }
+    return 1;
+}
+
+// a method to build a tar file with files from command line
+void cf(int argc, char* argv[]){
+
+    //check files and get names
+    vector <string> filesnames;     // vector to hold names from comman line
+    vector <File> files;            // vector to hold file objects
+    for(int i = 3; i<argc; i++){    // start when files listed on command line, insert names into vector
+        listAll(argv[i], filesnames);
+    }
+
+    // create a vector of file objects
+    for(auto elem : filesnames){
+        files.push_back(makeFile(elem));
+    }
+
+    fstream tarfile (argv[2], ios::out | ios::binary);  //fstream object to write File objects out to binary file
+    int size =  files.size();
+    tarfile.write(reinterpret_cast<const char *>(&size), sizeof(size));          //write out number of files to beginning of tarfile
+
+    for(auto elem : files){
+        tarfile.write((char*) &elem, sizeof(File));   //write file object
+
+        if(!elem.isADir()){                  // if not a directory, write text to tarfile char by char
+            fstream inText (elem.getName(), ios::in);
+            char ch;
+            while(inText.get(ch)){
+                tarfile.write((char*) &ch, sizeof(char));
+            }
+            inText.close();
+        }
+    }
+    tarfile.close();
+
+}
+
+// a function to show all the files contained in a tar file
+void tf(char* argv[]){
+
+    // open the tar file, throw err if not found and quit
+    fstream tarfile(argv[2], ios::in | ios::binary);
+    if(tarfile.fail()){
+        cout<<"### Cannot open file "<<argv[2]<<endl;
+        exit(1);
+    }
+    int numFiles;
+    tarfile.read((char*) &numFiles, sizeof(int));   //get number of files/directories in tar file
+
+    //parse the tar file, loop for each file 
+    for(int i = 0; i<numFiles; i++){
+        File myFile;
+        tarfile.read((char*) &myFile, sizeof(File));
+        cout << myFile.getName() << endl;
+
+        // if not directory, skip all the text
+        if(!myFile.isADir()){
+            tarfile.seekg(stoi(myFile.getSize()), ios::cur);
+        }
+    }
+
+}
+
+// read a tar file, recreate files within
+void xf(char * argv[]){
+    // tarfile to read from, check if it exists and throw error if not
+    fstream tarfile(argv[2], ios::in | ios::binary);
+    if(tarfile.fail()){
+        cout<<"### Cannot open file "<<argv[2]<<endl;
+        exit(1);
+    }
+    int numFiles;
+    tarfile.read((char*) &numFiles, sizeof(int));   //get number of files/directories in tar file
+
+    //parse the tar file, loop for each file 
+    for(int i = 0; i<numFiles; i++){
+        File myFile;
+        tarfile.read((char*) &myFile, sizeof(File));    //get first file
+
+        // check if the file/directory already exists. if so, do nothing.
+        fstream ff ( myFile.getName().c_str(), ios:: in);
+        if(!ff.fail()){
+            cout << "The file " << myFile.getName() << " already exists. Cannot recreate." << endl;
+            continue;
+        }
+        ff.close();
+
+        // if not directory, create text file and insert contents
+        if(!myFile.isADir()){
+            // write text out to file so no content is lost
+            fstream create ( myFile.getName().c_str(), ios:: out);
+            char ch;
+            for(int i=0; i < stoi(myFile.getSize()); i++){
+                tarfile.read((char*) &ch, sizeof(char));
+                create.write((char*) &ch, sizeof(char));
+            } 
+            create.close();
+            // preserve timestamp and privacy settings
+            string command = "touch " + myFile.getName();
+            system(command.c_str());
+            command = "chmod " + myFile.getPmode() + " " + myFile.getName();
+            system(command.c_str());
+            command = "touch -t " + myFile.getStamp() + " " + myFile.getName();
+            system(command.c_str());
+
+        }
+        else if(myFile.isADir()){
+            string command = "mkdir " + myFile.getName();       // make the directory
+            system(command.c_str());
+            command = "chmod " + myFile.getPmode() + " " + myFile.getName();
+            system(command.c_str());
+            command = "touch -t " + myFile.getStamp() + " " + myFile.getName();
+            system(command.c_str());
+        }
+    }
+    tarfile.close();
+}
+
+
+// a method to list the path of a file and insert it into a vector
+void listAll(string s, vector <string> &filenames)
+{
+    fstream infile(s, ios::in);  //file object to test if file exists
+    if (infile.fail())
+    {
+        cout<<"### Cannot open file "<<s<<endl;
+        exit(1);
+    }
+    infile.close();
+
+    struct stat buf;                        // stat struct to determine if directory
+    lstat (s.c_str(), &buf);
+
+    string command = "ls -1R >temp " + s;  // system command to get all files in directory and put paths in a file called temp
+    system(command.c_str());
+    fstream temp("temp", ios::in);       // filestream object to read paths from temp
+    string line, path;
+    filenames.push_back(s);                 // add file to vector
+
+    if (S_ISDIR(buf.st_mode)){              // if directory, read in path from temp file     
+        while(getline (temp, line, '\n' )){  
+            if(line.back()==':'){           // : menas directory
+                line.pop_back();            // pop the : off the string
+                path = line;                // save the directory to the path
+            }
+            else if(line == ""){            // skip new line
+                continue;
+            }
+            else{                           // add onto path
+                line = path + "/" + line;
+                filenames.push_back(line);
+            }
+        }
+    }
+    system("rm temp");                      //delete temp file
+    temp.close();
+}
+
+//function to construct file object from parameters
+//code taken from utility.cpp
+File makeFile(string name){
+    struct stat buf;
+    lstat (name.c_str(), &buf);
+
+    //set directory flag
+    bool isDirectory;
+    if (S_ISREG(buf.st_mode))
+        isDirectory = false;
+    else if (S_ISDIR(buf.st_mode))
+        isDirectory = true;
+
+    // set protection and size
+    string protection, size;
+    protection = (to_string((buf.st_mode & S_IRWXU) >> 6) + to_string((buf.st_mode & S_IRWXG) >> 3) + to_string(buf.st_mode & S_IRWXO));
+    size = to_string(buf.st_size);
+
+    char stamp[16];
+    strftime(stamp, 16, "%Y%m%d%H%M.%S", localtime(&buf.st_mtime));
+
+    // instantiate file object
+    File myFile(name.c_str(), protection.c_str(), size.c_str(), stamp);
+
+    // flag directory
+    if(isDirectory)
+        myFile.flagAsDir();
+
+    return myFile;
+}
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ clear
+[3;J[H[2J]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ ls
+abracadabra  [0m[38;5;34ma.out[0m  [38;5;27mExamples[0m  file.cpp  file.h  file.o  help  [38;5;34mjtar[0m  jtar.cpp  [38;5;27mMYTEST[0m  README  spell  typescript  utility.cpp
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ cat file.h
+using namespace std;
+#include <string>
+#include <cstring>
+#include <fstream>
+#include <iostream>
+#include <cstdlib>
+#include <cstdio>
+
+class File
+{
+   public :
+       File (const File& otherFile);
+       File (const char name[], const char pmode[],
+             const char size[], const char stamp[]);
+       File ();
+       File & operator = (const File& otherFile);
+       string getSize() const;
+       string getName() const;
+       string getPmode() const;
+       string getStamp() const;
+       int recordSize() const;
+       void flagAsDir();
+       bool isADir() const;
+
+   private :
+       char name[81], pmode[5], size[7], stamp[16];
+       bool ADir;
+};
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ cat file.o
+ELF          >                    à          @     @   UH‰åH‰}øH‹Eø¶@mÉÃUH‰åH‰}øH‹EøÆ@mÉÃUH‰åSHƒìH‰}èH‹EèH‰Çè    ‰ÃH‹EèHƒÀQH‰Çè    ÃH‹EèHƒÀVH‰Çè    ÃH‹EèHƒÀ]H‰Çè    HƒÄ[ÉÃUH‰åATSHƒì H‰ûH‰uØI‰ÜHEïH‰Çè    H‹EØHUïH‰ÆL‰çè    ë‰ÓI‰ÄHEïH‰Çè    L‰àHcÓH‰Çè    HEïH‰Çè    H‰ØH‰ØHƒÄ [A\ÉÃUH‰åATSHƒì H‰ûH‰uØI‰ÜHEïH‰Çè    H‹EØHHQHEïH‰ÂH‰ÎL‰çè    ë‰ÓI‰ÄHEïH‰Çè    L‰àHcÓH‰Çè    HEïH‰Çè    H‰ØH‰ØHƒÄ [A\ÉÃUH‰åATSHƒì H‰ûH‰uØI‰ÜHEïH‰Çè    H‹EØHH]HEïH‰ÂH‰ÎL‰çè    ë‰ÓI‰ÄHEïH‰Çè    L‰àHcÓH‰Çè    HEïH‰Çè    H‰ØH‰ØHƒÄ [A\ÉÃUH‰åATSHƒì H‰ûH‰uØI‰ÜHEïH‰Çè    H‹EØHHVHEïH‰ÂH‰ÎL‰çè    ë‰ÓI‰ÄHEïH‰Çè    L‰àHcÓH‰Çè    HEïH‰Çè    H‰ØH‰ØHƒÄ [A\ÉÃUH‰åHƒìH‰}øH‹Eøº   ¾    H‰Çè    H‹EøHƒÀQº   ¾    H‰Çè    H‹EøHƒÀVº   ¾    H‰Çè    H‹EøHƒÀ]º   ¾    H‰Çè    H‹EøÆ@m ÉÃUH‰åHƒì0H‰}øH‰uğH‰UèH‰MàL‰EØH‹EøH‹UğH‰ÖH‰Çè    H‹EøHPQH‹EèH‰ÆH‰×è    H‹EøHPVH‹EàH‰ÆH‰×è    H‹EøHP]H‹EØH‰ÆH‰×è    H‹EøÆ@m ÉÃUH‰åHƒìH‰}øH‰uğH‹UğH‹EøH‰ÖH‰Çè    H‹EğHPQH‹EøHƒÀQH‰ÖH‰Çè    H‹EğHPVH‹EøHƒÀVH‰ÖH‰Çè    H‹EğHP]H‹EøHƒÀ]H‰ÖH‰Çè    H‹Eğ¶PmH‹EøˆPmH‹EøÉÃUH‰åHƒìH‰}øH‰uğH‹UğH‹EøH‰ÖH‰Çè    H‹EğHPQH‹EøHƒÀQH‰ÖH‰Çè    H‹EğHPVH‹EøHƒÀVH‰ÖH‰Çè    H‹EğHP]H‹EøHƒÀ]H‰ÖH‰Çè    H‹Eğ¶PmH‹EøˆPmÉÃUH‰åHƒì‰}ü‰uøƒ}üu*}øÿÿ  u!¿    è    ¸    º    ¾    H‰Çè    ÉÃUH‰å¾ÿÿ  ¿   è­ÿÿÿÉÃ  ÿÿ/6 P  ÿÿ6= W  ÿÿ6= W  ÿÿ6= W               GCC: (GNU) 4.4.7 20120313 (Red Hat 4.4.7-23)          zPR x                   A†CM      @           A†CM       `       Y    A†CPƒD          zPLR x      $   $       p       A†CJƒŒa $   L       w       A†CJƒŒh $   t       w       A†CJƒŒh $   œ       w       A†CJƒŒh    D      z    A†Cu     d      ~    A†Cy     „      ‰    A†C„     ¤      …    A†C€     Ä      @    A†C{      ä          A†CP    .symtab .strtab .shstrtab .rela.text .data .bss .gcc_except_table .rodata .rela.ctors .comment .note.GNU-stack .rela.eh_frame                                                                                        @       ²                                                   È      °                          &                     ô                                     ,                     ô                                    1                     ô      0                              C                     $                                    P                     (                                    K                      x                                 W      0               0      .                             `                      ^                                     u                     `                                    p                            È                                                `                                                          à      À                          	                             #                                                         ñÿ                                                                                  
+                                                                     ]      @       I                                             
+                                            	                 g                    z                                         ¤     $       Y       ¼                      Ã                      Ò     ~       p       æ                      ó                                               î       w       (    f      w       =    Ş      w       Q    V      z       ^                     e    V      z       r    Ğ      ~       Š                     ‘    Ğ      ~       ©    N      ‰       ¹    Ø      …       É    Ø      …       Ù                     ñ                     	                                           file.cpp _ZStL8__ioinit _Z41__static_initialization_and_destruction_0ii _GLOBAL__I__ZNK4File6isADirEv _ZNK4File6isADirEv __gxx_personality_v0 _ZN4File9flagAsDirEv _ZNK4File10recordSizeEv strlen _Unwind_Resume _ZNK4File7getNameEv _ZNSaIcEC1Ev _ZNSsC1EPKcRKSaIcE _ZNSaIcED1Ev _ZNK4File8getPmodeEv _ZNK4File8getStampEv _ZNK4File7getSizeEv _ZN4FileC2Ev memcpy _ZN4FileC1Ev _ZN4FileC2EPKcS1_S1_S1_ strcpy _ZN4FileC1EPKcS1_S1_S1_ _ZN4FileaSERKS_ _ZN4FileC2ERKS_ _ZN4FileC1ERKS_ _ZNSt8ios_base4InitC1Ev _ZNSt8ios_base4InitD1Ev __dso_handle __cxa_atexit      9             üÿÿÿÿÿÿÿK             üÿÿÿÿÿÿÿ]             üÿÿÿÿÿÿÿo             üÿÿÿÿÿÿÿ›             üÿÿÿÿÿÿÿ®             üÿÿÿÿÿÿÿÁ             üÿÿÿÿÿÿÿÏ             üÿÿÿÿÿÿÿÛ             üÿÿÿÿÿÿÿ            üÿÿÿÿÿÿÿ%            üÿÿÿÿÿÿÿ8            üÿÿÿÿÿÿÿF            üÿÿÿÿÿÿÿR            üÿÿÿÿÿÿÿƒ            üÿÿÿÿÿÿÿ            üÿÿÿÿÿÿÿ°            üÿÿÿÿÿÿÿ¾            üÿÿÿÿÿÿÿÊ            üÿÿÿÿÿÿÿû            üÿÿÿÿÿÿÿ            üÿÿÿÿÿÿÿ(            üÿÿÿÿÿÿÿ6            üÿÿÿÿÿÿÿB            üÿÿÿÿÿÿÿl      
+              t            üÿÿÿÿÿÿÿ†      
+                          üÿÿÿÿÿÿÿ       
+              ¨            üÿÿÿÿÿÿÿº      
+              Â            üÿÿÿÿÿÿÿû            üÿÿÿÿÿÿÿ            üÿÿÿÿÿÿÿ)            üÿÿÿÿÿÿÿ@            üÿÿÿÿÿÿÿm            üÿÿÿÿÿÿÿˆ            üÿÿÿÿÿÿÿ£            üÿÿÿÿÿÿÿ¾            üÿÿÿÿÿÿÿ÷            üÿÿÿÿÿÿÿ            üÿÿÿÿÿÿÿ-            üÿÿÿÿÿÿÿH            üÿÿÿÿÿÿÿ{      
+              €         $   üÿÿÿÿÿÿÿ…      
+   %           Š      
+   &                 
+              —         '   üÿÿÿÿÿÿÿ                           
+              $                     D                    d             $       “       
+              ¨             ~       ±       
+              Ğ             î       Ù       
+             ø             f            
+                          Ş      )      
+      $       H            V      h            Ğ      ˆ            N      ¨            Ø      È            ]      è                  ]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ clear
+[3;J[H[2J]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ ls
+abracadabra  [0m[38;5;34ma.out[0m  [38;5;27mExamples[0m  file.cpp  file.h  file.o  help  [38;5;34mjtar[0m  jtar.cpp  [38;5;27mMYTEST[0m  README  spell  typescript  utility.cpp
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ cat file.cpp
+
+#include "file.h"
+
+bool File::isADir() const
+{
+	return ADir;
+}
+
+void File::flagAsDir()
+{
+	ADir = true;
+}
+
+int File::recordSize() const
+{
+	return (strlen(name)+strlen(pmode)+strlen(size)+strlen(stamp));
+}
+
+string File::getName() const
+{
+	return name;
+}
+
+string File::getPmode() const
+{
+	return pmode;
+}
+
+string File::getStamp() const
+{
+	return stamp;
+}
+
+string File::getSize() const
+{
+	return size;
+}
+
+File::File ()
+{
+       strcpy (name, "\0");  strcpy (pmode, "\0");
+       strcpy (size, "\0"); strcpy (stamp, "\0");
+       ADir = false;
+
+}
+
+File::File (const char myName[], const char myPmode[],
+            const char mySize[], const char myStamp[])
+{
+       strcpy (name, myName);  strcpy (pmode, myPmode);
+       strcpy (size, mySize); strcpy (stamp, myStamp);
+       ADir = false;
+}
+
+File & File::operator = (const File& otherFile)
+{
+       strcpy (name, otherFile.name);
+       strcpy (pmode, otherFile.pmode);
+       strcpy (size, otherFile.size);
+       strcpy (stamp, otherFile.stamp);
+       ADir = otherFile.ADir;
+       return *this;
+}
+       
+File::File (const File& otherFile)
+{
+       strcpy (name, otherFile.name);
+       strcpy (pmode, otherFile.pmode);
+       strcpy (size, otherFile.size);
+       strcpy (stamp, otherFile.stamp);
+       ADir = otherFile.ADir;
+}
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ clear
+[3;J[H[2J]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ ls
+abracadabra  [0m[38;5;34ma.out[0m  [38;5;27mExamples[0m  file.cpp  file.h  file.o  help  [38;5;34mjtar[0m  jtar.cpp  [38;5;27mMYTEST[0m  README  spell  typescript  utility.cpp
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ c++ jtar.cpp
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ ls -la Examples/
+total 4
+drwxrwxr-x. 3 rivers_as rivers_as   38 Mar 15 21:42 [0m[38;5;27m.[0m
+drwxrwxr-x. 4 rivers_as rivers_as  216 Mar 15 22:34 [38;5;27m..[0m
+-rw-rw-r--. 1 rivers_as rivers_as 1848 Mar 12 23:20 rhymes
+drwxrwxr-x. 2 rivers_as rivers_as   60 Mar 15 21:42 [38;5;27mSmallFiles[0m
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ ls -la Examples/rhymes
+-rw-rw-r--. 1 rivers_as rivers_as 1848 Mar 12 23:20 Examples/rhymes
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ ls
+abracadabra  [0m[38;5;34ma.out[0m  [38;5;27mExamples[0m  file.cpp  file.h  file.o  help  [38;5;34mjtar[0m  jtar.cpp  [38;5;27mMYTEST[0m  README  spell  typescript  utility.cpp
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ clear
+[3;J[H[2J]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ ls
+abracadabra  [0m[38;5;34ma.out[0m  [38;5;27mExamples[0m  file.cpp  file.h  file.o  help  [38;5;34mjtar[0m  jtar.cpp  [38;5;27mMYTEST[0m  README  spell  typescript  utility.cpp
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ ls -la Examples/
+total 4
+drwxrwxr-x. 3 rivers_as rivers_as   38 Mar 15 21:42 [0m[38;5;27m.[0m
+drwxrwxr-x. 4 rivers_as rivers_as  216 Mar 15 22:34 [38;5;27m..[0m
+-rw-rw-r--. 1 rivers_as rivers_as 1848 Mar 12 23:20 rhymes
+drwxrwxr-x. 2 rivers_as rivers_as   60 Mar 15 21:42 [38;5;27mSmallFiles[0m
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ ./a.out -heyyyyyy
+jtar: Invalid option (-heyyyyyy) 
+Try 'jtar --help' for more information.
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ ./a.out -cf
+jtar: Invalid format
+Try 'jtar --help' for more information.
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ ./a.out -cf tarfile Examples/
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ ./a.out -tf tarfile 
+Examples/
+Examples//rhymes
+Examples//SmallFiles
+Examples/SmallFiles/file1
+Examples/SmallFiles/file2
+Examples/SmallFiles/list
+Examples/SmallFiles/midnight
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ rm -rR Examples/
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ ./a.out -xf E[Ktarfile 
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ ls -la Examples/
+total 4
+drwxrwxr-x. 3 rivers_as rivers_as   38 Mar 15 22:35 [0m[38;5;27m.[0m
+drwxrwxr-x. 4 rivers_as rivers_as  231 Mar 15 22:35 [38;5;27m..[0m
+-rw-rw-r--. 1 rivers_as rivers_as 1848 Mar 12 23:20 rhymes
+drwxrwxr-x. 2 rivers_as rivers_as   60 Mar 15 22:35 [38;5;27mSmallFiles[0m
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ ./a.out --help
+'jtar' saves many files together into a single tape or disk archive, and 
+can restore individual files from the archive. 
+
+Usage: jtar [OPTION]... [FILE]... 
+
+Option Examples:
+  tar -cf archive.tar foo bar  # Create archive.tar from files foo and bar.
+  tar -tf archive.tar          # List all files in archive.tar verbosely. 
+  tar -xf archive.tar          # Extract all files from archive.tar.
+]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ clear
+[3;J[H[2J]0;rivers_as@cobra:~/csc310/CSC310/Prog2[rivers_as@cobra Prog2]$ exit
+exit
+
+Script done on Wed 15 Mar 2023 10:36:00 PM EDT
