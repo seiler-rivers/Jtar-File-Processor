@@ -7,9 +7,12 @@ can restore individual files from the archive.
 Usage: tar [OPTION]... [FILE]...
 
 Option Examples:
-  tar -cf archive.tar foo bar  # Create archive.tar from files foo and bar.
-  tar -tf archive.tar          # List all files in archive.tar verbosely.
-  tar -xf archive.tar          # Extract all files from archive.tar.
+ 
+  1. tar -cf archive.tar foo bar   -------  # Create archive.tar from files foo and bar.
+   
+  2. tar -tf archive.tar        -------     # List all files in archive.tar verbosely.
+  
+ 3.  tar -xf archive.tar       -------     # Extract all files from archive.tar.
 
 
 
