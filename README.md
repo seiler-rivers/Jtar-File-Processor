@@ -1,6 +1,18 @@
 # Jtar-File-Processor
  The goal of this project is to write a version of the Linux tar command. This project let the user create a tar file that contains text files and/or directories, list the files contained in the tar file, and recreate them with the same potection and timestamps.
 
+`jtar' saves many files together into a single tape or disk archive, and
+can restore individual files from the archive.
+
+Usage: tar [OPTION]... [FILE]...
+
+Option Examples:
+  tar -cf archive.tar foo bar  # Create archive.tar from files foo and bar.
+  tar -tf archive.tar          # List all files in archive.tar verbosely.
+  tar -xf archive.tar          # Extract all files from archive.tar.
+
+
+
 ## THE FILE CLASS:
     In this project, a File class was built to store information about each file. The attributes of the File class are as follows:
         name    - to identify the path to the file, not longer than 80 chars
